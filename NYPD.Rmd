@@ -1,0 +1,121 @@
+---
+title: "NYPD Shooting Incident"
+author: "Nabilah Bondagjy"
+date: "2024-04-26"
+output:
+  html_document: default
+  pdf_document: default
+---
+---
+title: "NYPD Shooting Incident"
+output: pdf_document
+date: "2024-04-25"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r tidyverse, echo = FALSE}
+library(tidyverse)
+```
+
+### Step 1: Import file in a reproducible manner
+
+```{r url}
+url_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+data <- read_csv(url_in)
+```
+
+#### Source and description of data: Data from the NYPD detailing incidents of shooting and murder within New York City.
+
+```{r incidents_by_boro}
+incidents_by_boro <- select(data, INCIDENT_KEY, OCCUR_DATE, BORO) %>%
+    mutate(OCCUR_DATE = year(mdy(OCCUR_DATE))) %>%
+    group_by(OCCUR_DATE, BORO) %>%
+    summarise(INCIDENTS = n())
+```
+
+#### The data we will use is focused on the incidents by borough over time and incidents by race of the perpetrator. The data was cleaned up to ensure only the necessary variables were included.
+
+
+```{r 1st_visualization}
+ggplot(incidents_by_boro, aes(OCCUR_DATE, INCIDENTS, color=BORO)) +
+    geom_line() + geom_point()
+```
+
+```{r incidents_by_perp_race}
+incidents_by_perp_race <- select(data, OCCUR_DATE, INCIDENT_KEY, PERP_RACE) %>%
+    mutate(OCCUR_DATE = year(mdy(OCCUR_DATE))) %>%
+    mutate(PERP_RACE = na_if(PERP_RACE, "UNKNOWN")) %>%
+    mutate(PERP_RACE = na_if(PERP_RACE, "(null)")) %>%
+    drop_na() %>%
+    group_by(OCCUR_DATE, PERP_RACE) %>%
+    summarise(INCIDENTS = n())
+```
+
+```{r 2nd_visualization}
+ggplot(incidents_by_perp_race, aes(OCCUR_DATE, INCIDENTS, fill=PERP_RACE)) +
+    geom_bar(position = "fill", stat = "identity")
+```
+
+```{r incidents_murder}
+incidents_murder <- select(data, INCIDENT_KEY, OCCUR_DATE, STATISTICAL_MURDER_FLAG) %>%
+    mutate(OCCUR_DATE = year(mdy(OCCUR_DATE))) %>%
+    filter(STATISTICAL_MURDER_FLAG == TRUE) %>%
+    group_by(OCCUR_DATE) %>%
+    summarise(MURDER_COUNT = n())
+```
+
+```{r incidents_total}
+incidents_total <- select(data, INCIDENT_KEY, OCCUR_DATE) %>%
+    mutate(OCCUR_DATE = year(mdy(OCCUR_DATE))) %>%
+    group_by(OCCUR_DATE) %>%
+    summarise(INCIDENTS_COUNT = n())
+```
+
+```{r combine}
+incidents_combined = full_join(incidents_total, incidents_murder, by="OCCUR_DATE")
+```
+
+```{r model}
+model <- lm(MURDER_COUNT ~ INCIDENTS_COUNT, data = incidents_combined)
+summary(model)
+```
+
+```{r add_predictions}
+incidents_combined_with_predictions <- incidents_combined %>%
+    mutate(PREDICTION = predict(model))
+```
+
+```{r visualize_model} 
+ggplot(incidents_combined_with_predictions) +
+    geom_point(aes(INCIDENTS_COUNT, MURDER_COUNT), color='blue') +
+    geom_point(aes(INCIDENTS_COUNT, PREDICTION), color='red') +
+    geom_smooth(method = "lm", aes(INCIDENTS_COUNT, PREDICTION), color='pink')
+```
+
+#### As we can see from our model - the more likely there is to be incidents, the greater a change of a murder occurring.
+
+
+
+
+
+
+
+
+
+#### Possible sources of bias:
+
+Selection bias: it's possible that the data that is gathered isn't representative of the true number of crimes committed as the data source that is feeding the analytics may not reflect reality. For instance, racism from law enforcement could lead to crimes being more likely to be recorded if they were committed by people of colour than crimes that weren't.
+
+Historical bias: like selection bias - this occurs when cultural prejudices and beliefs influence decisions which can impact data that was collected in the past.
+
+Survivorship bias: it's possible for there to be an error that causes us to focus on data points that survive the selection process while ignoring data points that did not survive. For instance in visualisation 2, datapoints that did not have race recorded were excluded from the analysis. This can end up skewing results and can lead to bias.
+
+
+#### Conclusion:
+
+In conclusion, we can determine that Brooklyn has the highest number of crimes out of all boroughs in New York City. We can also see where bias may impact the veracity of data. Lastly, we can see that in order to reduce the number of murders, the number of overall incidents must decrease.
